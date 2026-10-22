@@ -1,0 +1,144 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* WrongBookHumanSolverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* WrongBookHumanSolverApp.swift */; };
+		100000000000000000000002 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* AppConfig.swift */; };
+		100000000000000000000003 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* Models.swift */; };
+		100000000000000000000004 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* KeychainStore.swift */; };
+		100000000000000000000005 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* AuthStore.swift */; };
+		100000000000000000000006 /* HumanSolverAdminAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* HumanSolverAdminAPI.swift */; };
+		100000000000000000000007 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* AppModel.swift */; };
+		100000000000000000000008 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* Views.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* WrongBookHumanSolverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrongBookHumanSolverApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* HumanSolverAdminAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HumanSolverAdminAPI.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		20000000000000000000000A /* WrongBookHumanSolver.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WrongBookHumanSolver.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		400000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000002 /* WrongBookHumanSolver */,
+				400000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		400000000000000000000002 /* WrongBookHumanSolver */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* WrongBookHumanSolverApp.swift */,
+				200000000000000000000002 /* AppConfig.swift */,
+				200000000000000000000003 /* Models.swift */,
+				200000000000000000000004 /* KeychainStore.swift */,
+				200000000000000000000005 /* AuthStore.swift */,
+				200000000000000000000006 /* HumanSolverAdminAPI.swift */,
+				200000000000000000000007 /* AppModel.swift */,
+				200000000000000000000008 /* Views.swift */,
+				200000000000000000000009 /* Info.plist */,
+			);
+			path = WrongBookHumanSolver;
+			sourceTree = "<group>";
+		};
+		400000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (20000000000000000000000A /* WrongBookHumanSolver.app */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500000000000000000000001 /* WrongBookHumanSolver */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 900000000000000000000002 /* Build configuration list for PBXNativeTarget */;
+			buildPhases = (
+				600000000000000000000001 /* Sources */,
+				300000000000000000000001 /* Frameworks */,
+				700000000000000000000001 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = WrongBookHumanSolver;
+			productName = WrongBookHumanSolver;
+			productReference = 20000000000000000000000A /* WrongBookHumanSolver.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		800000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = { 500000000000000000000001 = { CreatedOnToolsVersion = 16.0; }; };
+			};
+			buildConfigurationList = 900000000000000000000001 /* Build configuration list for PBXProject */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = 400000000000000000000001;
+			productRefGroup = 400000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (500000000000000000000001 /* WrongBookHumanSolver */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		700000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		600000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* WrongBookHumanSolverApp.swift in Sources */,
+				100000000000000000000002 /* AppConfig.swift in Sources */,
+				100000000000000000000003 /* Models.swift in Sources */,
+				100000000000000000000004 /* KeychainStore.swift in Sources */,
+				100000000000000000000005 /* AuthStore.swift in Sources */,
+				100000000000000000000006 /* HumanSolverAdminAPI.swift in Sources */,
+				100000000000000000000007 /* AppModel.swift in Sources */,
+				100000000000000000000008 /* Views.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_OPTIMIZATION_LEVEL = 0; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		A00000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; GCC_C_LANGUAGE_STANDARD = gnu17; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; VALIDATE_PRODUCT = YES; }; name = Release; };
+		A00000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 183; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WrongBookHumanSolver/Info.plist; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.wrongbook.humansolver; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A00000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 183; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WrongBookHumanSolver/Info.plist; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.wrongbook.humansolver; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		900000000000000000000001 /* Build configuration list for PBXProject */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000001 /* Debug */, A00000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		900000000000000000000002 /* Build configuration list for PBXNativeTarget */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000003 /* Debug */, A00000000000000000000004 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 800000000000000000000001 /* Project object */;
+}
