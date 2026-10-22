@@ -505,9 +505,10 @@ private struct SolverMediaStrip: View {
         GroupBox(title) {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 14) {
-                    ForEach(Array(figures.enumerated()), id: \.offset) { index, figure in
+                    ForEach(figures.indices, id: \.self) { index in
+                        let figure = figures[index]
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(figure.label?.isEmpty == false ? figure.label! : "圖片 \(index + 1)")
+                            Text(figure.label.flatMap { $0.isEmpty ? nil : $0 } ?? "圖片 \(index + 1)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
