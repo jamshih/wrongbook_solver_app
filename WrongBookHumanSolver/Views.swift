@@ -722,78 +722,114 @@ struct ReplyComposer: View {
     let send: (String, [PendingImage]) async -> Bool
 
     var body: some View {
-        GroupBox("回覆學生") {
-            VStack(alignment: .leading, spacing: 12) {
-                TextEditor(text: $text)
-                    .frame(minHeight: 140)
-                    .padding(6)
-                    .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                    .scrollDismissesKeyboard(.interactively)
-
-                if !images.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack {
-                            ForEach(images) { item in
-                                ZStack(alignment: .topTrailing) {
-                                    PendingImageThumbnail(item: item)
-                                        .frame(width: 96, height: 96)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    Button {
-                                        images.removeAll { $0.id == item.id }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(.white, .black.opacity(0.7))
-                                    }
-                                    .offset(x: 6, y: -6)
+        VStack(alignment: .leading, spacing: 10) {
+            if !images.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 9) {
+                        ForEach(images) { item in
+                            ZStack(alignment: .topTrailing) {
+                                PendingImageThumbnail(item: item)
+                                    .frame(width: 76, height: 76)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                Button {
+                                    images.removeAll { $0.id == item.id }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .black.opacity(0.75))
                                 }
+                                .accessibilityLabel("移除圖片")
+                                .disabled(sending)
+                                .offset(x: 5, y: -5)
                             }
                         }
                     }
-                }
-
-                HStack {
-                    PhotosPicker(
-                        selection: $pickerItems,
-                        maxSelectionCount: max(0, 10 - images.count),
-                        matching: .images
-                    ) {
-                        Label("相簿", systemImage: "photo.on.rectangle")
-                    }
-                    Button { showCamera = true } label: { Label("拍照", systemImage: "camera") }
-                    Button {
-                        guard images.count < 10, let image = UIPasteboard.general.image else { return }
-                        Task { @MainActor in
-                            if let pending = await SolverImageProcessor.prepare(
-                                image: image,
-                                filename: "paste_\(UUID().uuidString).jpg"
-                            ) {
-                                images.append(pending)
-                            }
-                        }
-                    } label: { Label("貼上圖片", systemImage: "doc.on.clipboard") }
-                    Spacer()
-                    Button {
-                        Task { await submit() }
-                    } label: {
-                        if sending { ProgressView() }
-                        else { Label("送出回覆", systemImage: "paperplane.fill") }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        sending ||
-                        (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty)
-                    )
+                    .padding(.horizontal, 3)
+                    .padding(.top, 4)
                 }
             }
+
+            HStack(alignment: .bottom, spacing: 9) {
+                Menu {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label("拍照", systemImage: "camera")
+                    }
+                    Button {
+                        pasteImage()
+                    } label: {
+                        Label("貼上圖片", systemImage: "doc.on.clipboard")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 38)
+                }
+                .accessibilityLabel("更多圖片選項")
+                .disabled(sending || images.count >= 10)
+
+                PhotosPicker(
+                    selection: $pickerItems,
+                    maxSelectionCount: max(1, 10 - images.count),
+                    matching: .images
+                ) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 38)
+                }
+                .accessibilityLabel("從相簿選擇圖片")
+                .disabled(sending || images.count >= 10)
+
+                TextField("傳送訊息…", text: $text, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 10)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 21))
+                    .submitLabel(.send)
+
+                Button {
+                    Task { await submit() }
+                } label: {
+                    Group {
+                        if sending {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        (sending || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty))
+                            ? Color.gray : Color(red: 0.37, green: 0.39, blue: 0.94),
+                        in: Circle()
+                    )
+                }
+                .accessibilityLabel("傳送訊息")
+                .disabled(
+                    sending ||
+                    (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty)
+                )
+            }
         }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
         .sheet(isPresented: $showCamera) {
             CameraPicker { image in
                 Task { @MainActor in
+                    guard images.count < 10 else { return }
                     if let pending = await SolverImageProcessor.prepare(
-                        image: image,
-                        filename: "camera_\(UUID().uuidString).jpg"
-                    ) {
+                        image: image, filename: "camera_\(UUID().uuidString).jpg"
+                    ), images.count < 10 {
                         images.append(pending)
                     }
                 }
@@ -801,6 +837,18 @@ struct ReplyComposer: View {
         }
         .onChange(of: pickerItems) { _, items in
             Task { await load(items) }
+        }
+    }
+
+    private func pasteImage() {
+        guard images.count < 10, !sending,
+              let image = UIPasteboard.general.image else { return }
+        Task { @MainActor in
+            if let pending = await SolverImageProcessor.prepare(
+                image: image, filename: "paste_\(UUID().uuidString).jpg"
+            ), images.count < 10 {
+                images.append(pending)
+            }
         }
     }
 
