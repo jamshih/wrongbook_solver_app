@@ -1,0 +1,38 @@
+name: Native iOS build
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-build:
+    name: Unsigned simulator build
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Xcode
+        run: xcodebuild -version
+      - name: Verify standalone project
+        run: xcodebuild -list -project WrongBookHumanSolver.xcodeproj
+      - name: Compile for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project WrongBookHumanSolver.xcodeproj \
+            -scheme WrongBookHumanSolver \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Check application product
+        run: test -d "${RUNNER_TEMP}/DerivedData/Build/Products/Debug-iphonesimulator/WrongBookHumanSolver.app"
