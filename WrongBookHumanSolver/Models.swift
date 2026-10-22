@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct AuthSession: Codable, Equatable {
     var accessToken: String
@@ -80,8 +81,8 @@ struct OperatorSession: Codable, Equatable {
     let expiresAt: Date
 }
 
-struct SolverQueueResponse: Decodable { let requests: [SolverRequest] }
-struct SolverDetailResponse: Decodable { let request: SolverRequest; let messages: [SolverMessage] }
+struct SolverQueueResponse: Decodable { var requests: [SolverRequest]; let unreadCounts: [String: Int]?; let nextOffset: Int? }
+struct SolverDetailResponse: Decodable { let request: SolverRequest; var messages: [SolverMessage]; let nextOffset: Int? }
 
 struct SolverRequest: Identifiable, Decodable, Hashable {
     let id: UUID
@@ -97,6 +98,12 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
     var createdAt: Date?
     var claimedAt: Date?
     var answeredAt: Date?
+    var lastStudentMessageAt: Date?
+    var operatorReadAt: Date?
+    var hasUnreadStudentMessage: Bool {
+        guard let lastStudentMessageAt else { return false }
+        return operatorReadAt.map { $0 < lastStudentMessageAt } ?? true
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, status, subject, stem, options
@@ -107,6 +114,26 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
         case createdAt = "created_at"
         case claimedAt = "claimed_at"
         case answeredAt = "answered_at"
+        case lastStudentMessageAt = "last_student_message_at"
+        case operatorReadAt = "operator_read_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        status = try c.decode(String.self, forKey: .status)
+        subject = try c.decodeIfPresent(String.self, forKey: .subject) ?? ""
+        stem = try c.decode(String.self, forKey: .stem)
+        options = try c.decodeIfPresent(JSONValue.self, forKey: .options)
+        choiceLabels = try c.decodeIfPresent(JSONValue.self, forKey: .choiceLabels)
+        sourceMetadata = try c.decodeIfPresent(JSONValue.self, forKey: .sourceMetadata)
+        figureRefs = try c.decodeIfPresent([SolverFigure].self, forKey: .figureRefs)
+        questionMedia = try c.decodeIfPresent([SolverFigure].self, forKey: .questionMedia)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        claimedAt = try c.decodeIfPresent(Date.self, forKey: .claimedAt)
+        answeredAt = try c.decodeIfPresent(Date.self, forKey: .answeredAt)
+        lastStudentMessageAt = try c.decodeIfPresent(Date.self, forKey: .lastStudentMessageAt)
+        operatorReadAt = try c.decodeIfPresent(Date.self, forKey: .operatorReadAt)
     }
 
     var optionLines: [String] {
@@ -142,7 +169,7 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
 
 struct SolverFigure: Decodable, Hashable, Identifiable {
     // Media identity must not change on every SwiftUI render.
-    var id: String { "\(bucket ?? "")|\(path ?? "")|\(signedURL ?? "")|\(displayOrder ?? 0)|\(label ?? "")" }
+    var id: String { "\(bucket ?? "")|\(path ?? "")|\(displayOrder ?? 0)" }
     let bucket: String?
     let path: String?
     let signedURL: String?
@@ -257,4 +284,17 @@ struct AnyEncodable: Encodable {
     private let encodeImpl: (Encoder) throws -> Void
     init<T: Encodable>(_ value: T) { encodeImpl = value.encode }
     func encode(to encoder: Encoder) throws { try encodeImpl(encoder) }
+}
+
+struct SolverReplyIdentity {
+    static func key(ownerID: String, requestID: UUID, text: String, images: [Data]) throws -> String {
+        let values = [ownerID, requestID.uuidString, text] + images.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
+        let data = try JSONEncoder().encode(values)
+        return "solver.pending-reply." + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    static func clientUID(key: String, defaults: UserDefaults = .standard) -> String {
+        let uid = defaults.string(forKey: key) ?? "reply-" + UUID().uuidString.lowercased()
+        defaults.set(uid, forKey: key)
+        return uid
+    }
 }

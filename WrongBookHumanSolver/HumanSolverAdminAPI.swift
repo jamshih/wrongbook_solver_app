@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import UIKit
 
 final class HumanSolverAdminAPI {
@@ -17,14 +18,34 @@ final class HumanSolverAdminAPI {
     private let auth: AuthStore
     init(auth: AuthStore) { self.auth = auth }
 
-    func queue(status: String) async throws -> [SolverRequest] {
-        let data = try await call(["action": AnyEncodable("queue"), "status": AnyEncodable(status)], timeout: 10)
-        return try Self.decoder.decode(SolverQueueResponse.self, from: data).requests
+    func queue(status: String) async throws -> SolverQueueResponse {
+        let generation = await MainActor.run { auth.sessionGeneration }
+        var offset = 0
+        var requests: [SolverRequest] = []
+        var seen: Set<UUID> = []
+        while true {
+            let data = try await call(["action": AnyEncodable("queue"), "status": AnyEncodable(status), "offset": AnyEncodable(offset)], timeout: 10, expectedGeneration: generation)
+            var page = try Self.decoder.decode(SolverQueueResponse.self, from: data)
+            requests.append(contentsOf: page.requests.filter { seen.insert($0.id).inserted })
+            guard let next = page.nextOffset, next > offset else { page.requests = requests; return page }
+            offset = next
+            try Task.checkCancellation()
+        }
     }
 
     func detail(id: UUID) async throws -> SolverDetailResponse {
-        let data = try await call(["action": AnyEncodable("detail"), "requestID": AnyEncodable(id.uuidString)], timeout: 10)
-        return try Self.decoder.decode(SolverDetailResponse.self, from: data)
+        let generation = await MainActor.run { auth.sessionGeneration }
+        var offset = 0
+        var messages: [SolverMessage] = []
+        while true {
+            let data = try await call(["action": AnyEncodable("detail"), "requestID": AnyEncodable(id.uuidString), "offset": AnyEncodable(offset)], timeout: 30, expectedGeneration: generation)
+            var page = try Self.decoder.decode(SolverDetailResponse.self, from: data)
+            messages.append(contentsOf: page.messages)
+            guard await MainActor.run(body: { auth.sessionGeneration == generation }) else { throw CancellationError() }
+            guard let next = page.nextOffset, next > offset else { page.messages = messages; return page }
+            offset = next
+            try Task.checkCancellation()
+        }
     }
 
     func claim(id: UUID) async throws {
@@ -47,41 +68,56 @@ final class HumanSolverAdminAPI {
         return object?["keyVersion"] as? Int ?? 0
     }
 
-    func upload(_ image: PendingImage, requestID: UUID, displayOrder: Int) async throws -> SolverAttachment {
+    private func upload(_ image: PendingImage, requestID: UUID, displayOrder: Int, generation: UUID) async throws -> SolverAttachment {
         let body: [String: AnyEncodable] = [
             "action": AnyEncodable("upload"), "requestID": AnyEncodable(requestID.uuidString),
-            "uploadUID": AnyEncodable("ios_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"),
+            "uploadUID": AnyEncodable("image-" + SHA256.hash(data: image.data).map { String(format: "%02x", $0) }.joined()),
             "mimeType": AnyEncodable(image.mimeType), "fileName": AnyEncodable(image.filename),
             "displayOrder": AnyEncodable(displayOrder), "base64": AnyEncodable(image.data.base64EncodedString())
         ]
-        let data = try await call(body, timeout: 90)
+        let data = try await call(body, timeout: 90, expectedGeneration: generation)
         return try Self.decoder.decode(UploadedAttachmentResponse.self, from: data).attachment
     }
 
     func reply(requestID: UUID, text: String, images: [PendingImage]) async throws -> SolverMessage {
+        let generation = await MainActor.run { auth.sessionGeneration }
+        guard let owner = await MainActor.run(body: { auth.accountID }) else { throw CancellationError() }
+        let retryKey = try SolverReplyIdentity.key(ownerID: owner, requestID: requestID, text: text, images: images.map(\.data))
+        let clientUID = SolverReplyIdentity.clientUID(key: retryKey)
         var attachments: [SolverAttachment] = []
-        for (index, image) in images.enumerated() { attachments.append(try await upload(image, requestID: requestID, displayOrder: index)) }
+        for (index, image) in images.enumerated() { attachments.append(try await upload(image, requestID: requestID, displayOrder: index, generation: generation)) }
         let body: [String: AnyEncodable] = [
             "action": AnyEncodable("reply"), "requestID": AnyEncodable(requestID.uuidString),
-            "clientUID": AnyEncodable("ios_reply_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"),
+            "clientUID": AnyEncodable(clientUID),
             "text": AnyEncodable(text), "attachments": AnyEncodable(attachments)
         ]
-        let data = try await call(body, timeout: 90)
-        return try Self.decoder.decode(ReplyResponse.self, from: data).message
+        guard await MainActor.run(body: { auth.sessionGeneration == generation }) else { throw CancellationError() }
+        let data = try await call(body, timeout: 90, expectedGeneration: generation)
+        guard await MainActor.run(body: { auth.sessionGeneration == generation }) else { throw CancellationError() }
+        let message = try Self.decoder.decode(ReplyResponse.self, from: data).message
+        UserDefaults.standard.removeObject(forKey: retryKey)
+        return message
     }
 
-    private func call(_ body: [String: AnyEncodable], timeout: TimeInterval = 12) async throws -> Data {
+    private func call(_ body: [String: AnyEncodable], timeout: TimeInterval = 12, expectedGeneration: UUID? = nil) async throws -> Data {
+        let generation = await MainActor.run { auth.sessionGeneration }
+        if let expectedGeneration, expectedGeneration != generation { throw CancellationError() }
         let access = try await auth.validAccessToken()
         // AuthStore is @MainActor. operatorToken() is synchronous, so unlike
         // validAccessToken() it cannot be crossed with a bare `await` from this
         // nonisolated API object. Read it explicitly on MainActor, then perform
         // the network request outside MainActor.
         let operatorToken = try await MainActor.run {
-            try auth.operatorToken()
+            guard auth.sessionGeneration == generation else { throw CancellationError() }
+            return try auth.operatorToken()
         }
-        do { return try await Self.rawRequest(accessToken: access, operatorToken: operatorToken, body: body, timeout: timeout) }
+        do {
+            let result = try await Self.rawRequest(accessToken: access, operatorToken: operatorToken, body: body, timeout: timeout)
+            guard await MainActor.run(body: { auth.sessionGeneration == generation }) else { throw CancellationError() }
+            return result
+        }
         catch let e as AppError {
-            if e.errorDescription == "operator_forbidden" { await MainActor.run { auth.lockOperator() } }
+            if e.errorDescription == "operator_forbidden" { await MainActor.run { if auth.sessionGeneration == generation { auth.lockOperator() } } }
             throw e
         }
     }

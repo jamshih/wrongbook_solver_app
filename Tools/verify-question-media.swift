@@ -47,6 +47,35 @@ struct QuestionMediaFixtureChecks {
         precondition(text.displayMedia.isEmpty)
         precondition(text.stem == "No image")
 
+        var inbox = latest
+        inbox.lastStudentMessageAt = Date(timeIntervalSince1970: 200)
+        inbox.operatorReadAt = Date(timeIntervalSince1970: 100)
+        precondition(inbox.hasUnreadStudentMessage)
+        inbox.operatorReadAt = inbox.lastStudentMessageAt
+        precondition(!inbox.hasUnreadStudentMessage)
+        inbox.operatorReadAt = nil
+        precondition(inbox.hasUnreadStudentMessage)
+        let fixtureDefaults = UserDefaults(suiteName: "solver-retry-fixture-" + UUID().uuidString)!
+        let requestID = latest.id
+        let key = try SolverReplyIdentity.key(ownerID: "account-a", requestID: requestID, text: "follow up", images: [Data([1,2]), Data([3])])
+        let uid = SolverReplyIdentity.clientUID(key: key, defaults: fixtureDefaults)
+        precondition(SolverReplyIdentity.clientUID(key: key, defaults: fixtureDefaults) == uid)
+        let otherOwnerKey = try SolverReplyIdentity.key(ownerID: "account-b", requestID: requestID, text: "follow up", images: [Data([1,2]), Data([3])])
+        precondition(key != otherOwnerKey)
+        let differentImagesKey = try SolverReplyIdentity.key(ownerID: "account-a", requestID: requestID, text: "follow up", images: [Data([1]), Data([2,3])])
+        precondition(key != differentImagesKey)
+        fixtureDefaults.removeObject(forKey: key)
+        precondition(SolverReplyIdentity.clientUID(key: key, defaults: fixtureDefaults) != uid)
+        fixtureDefaults.removeObject(forKey: key)
+        let message = try decoder.decode(SolverMessage.self, from: Data("""
+          {"id":"12345678-1234-4234-8234-123456789abc","request_id":"12345678-1234-1234-1234-123456789abc","author_kind":"student","body":"Follow up","attachments":[{"bucket":"wrongbook-human-solver","path":"students/account-a/request/photo.png","mimeType":"image/png","byteSize":100,"displayOrder":0,"signedURL":"https://example.test/signed"}]}
+          """.utf8))
+        precondition(message.authorKind == "student" && message.attachments?.count == 1)
+        let nullSubject = try decoder.decode(SolverRequest.self, from: Data("""
+          {"id":"12345678-1234-1234-1234-123456789abc","status":"answered","subject":null,"stem":"Legacy unclassified"}
+          """.utf8))
+        precondition(nullSubject.subject.isEmpty)
+        print("PASS: student photo decoding, unread receipts, account-scoped retry identity and deliberate repeated messages")
         print("PASS: legacy media, typed crop/figures, new-over-legacy precedence, and text-only requests")
     }
 }
