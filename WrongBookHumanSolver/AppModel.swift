@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -10,6 +11,7 @@ final class AppModel: ObservableObject {
 
     @Published var tab: QueueTab = .queued
     @Published var requests: [SolverRequest] = []
+    @Published var unreadCounts: [String: Int] = [:]
     @Published var selectedID: UUID?
     @Published var detail: SolverDetailResponse?
 
@@ -27,10 +29,22 @@ final class AppModel: ObservableObject {
 
     private var queueGeneration = 0
     private var detailGeneration = 0
-    private var queueTask: Task<[SolverRequest], Error>?
+    private var queueTask: Task<SolverQueueResponse, Error>?
     private var detailTask: Task<SolverDetailResponse, Error>?
 
-    init(auth: AuthStore) { self.auth = auth }
+    private var accountSubscription: AnyCancellable?
+    init(auth: AuthStore) {
+        self.auth = auth
+        accountSubscription = auth.$sessionGeneration.dropFirst().sink { [weak self] _ in self?.invalidateAccount() }
+    }
+
+    func invalidateAccount() {
+        clearSolverImageCaches()
+        queueGeneration += 1; detailGeneration += 1
+        queueTask?.cancel(); detailTask?.cancel()
+        requests = []; unreadCounts = [:]; detail = nil; selectedID = nil
+        isLoading = false; isDetailLoading = false; errorMessage = nil
+    }
 
     func reloadQueue() async {
         guard auth.state == .operatorReady else { return }
@@ -38,6 +52,7 @@ final class AppModel: ObservableObject {
         queueGeneration += 1
         let generation = queueGeneration
         let requestedTab = tab
+        let accountGeneration = auth.sessionGeneration
         isLoading = true
         queueErrorMessage = nil
 
@@ -54,11 +69,12 @@ final class AppModel: ObservableObject {
 
         do {
             let loaded = try await task.value
-            guard generation == queueGeneration, requestedTab == tab else { return }
-            requests = loaded
+            guard generation == queueGeneration, requestedTab == tab, accountGeneration == auth.sessionGeneration else { return }
+            requests = loaded.requests
+            unreadCounts = loaded.unreadCounts ?? [:]
             hasLoadedQueue = true
             if let selectedID,
-               !loaded.contains(where: { $0.id == selectedID }),
+               !loaded.requests.contains(where: { $0.id == selectedID }),
                tab != .answered {
                 self.selectedID = nil
                 detail = nil
@@ -67,7 +83,7 @@ final class AppModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            guard generation == queueGeneration, requestedTab == tab else { return }
+            guard generation == queueGeneration, requestedTab == tab, accountGeneration == auth.sessionGeneration else { return }
             hasLoadedQueue = true
             queueErrorMessage = AppError.userFacingMessage(for: error)
         }
@@ -124,6 +140,7 @@ final class AppModel: ObservableObject {
         detailGeneration += 1
         let generation = detailGeneration
         let requestID = selectedID
+        let accountGeneration = auth.sessionGeneration
         isDetailLoading = true
         detailErrorMessage = nil
 
@@ -140,12 +157,12 @@ final class AppModel: ObservableObject {
 
         do {
             let loaded = try await task.value
-            guard generation == detailGeneration, self.selectedID == requestID else { return }
+            guard generation == detailGeneration, self.selectedID == requestID, accountGeneration == auth.sessionGeneration else { return }
             detail = loaded
         } catch is CancellationError {
             return
         } catch {
-            guard generation == detailGeneration, self.selectedID == requestID else { return }
+            guard generation == detailGeneration, self.selectedID == requestID, accountGeneration == auth.sessionGeneration else { return }
             detailErrorMessage = AppError.userFacingMessage(for: error)
         }
     }
@@ -172,10 +189,13 @@ final class AppModel: ObservableObject {
         await reloadDetail()
     }
 
-    func sendReply(text: String, images: [PendingImage]) async -> Bool {
-        guard let selectedID else { return false }
+    func sendReply(requestID: UUID, text: String, images: [PendingImage]) async -> Bool {
+        guard let selectedID, selectedID == requestID else { return false }
+        let generation = auth.sessionGeneration
         do {
             _ = try await api.reply(requestID: selectedID, text: text, images: images)
+            guard auth.sessionGeneration == generation else { return false }
+            guard self.selectedID == selectedID else { return true }
             // A successful reply moves a queued/claimed request to the answered queue.
             // Reloading the previous queue would otherwise clear the selected thread.
             // Keep the conversation open so operators can send additional messages.

@@ -74,6 +74,7 @@ private enum SolverImageProcessor {
 
 
 private final class SolverRemoteImageCache {
+    @MainActor static var generation = UUID()
     static let shared: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
         cache.countLimit = 24
@@ -91,6 +92,13 @@ private final class SolverPendingPreviewCache {
         return cache
     }()
     private init() {}
+}
+
+@MainActor
+func clearSolverImageCaches() {
+    SolverRemoteImageCache.generation = UUID()
+    SolverRemoteImageCache.shared.removeAllObjects()
+    SolverPendingPreviewCache.shared.removeAllObjects()
 }
 
 private struct PendingImageThumbnail: View {
@@ -143,6 +151,8 @@ private struct SolverRemoteImage: View {
             }
         }
         .task(id: url) {
+            let generation = SolverRemoteImageCache.generation
+            image = nil
             failed = false
             let key = url as NSURL
             if let cached = SolverRemoteImageCache.shared.object(forKey: key) {
@@ -161,7 +171,8 @@ private struct SolverRemoteImage: View {
                 }
                 // The expensive network/downsample work is already off-main. Decode this
                 // bounded preview once, then cache the UIImage for subsequent view updates.
-                guard !Task.isCancelled, let decoded = UIImage(data: preview) else { return }
+                guard !Task.isCancelled, generation == SolverRemoteImageCache.generation,
+                      let decoded = UIImage(data: preview) else { return }
                 SolverRemoteImageCache.shared.setObject(decoded, forKey: key, cost: preview.count)
                 image = decoded
             } catch is CancellationError {
@@ -254,7 +265,10 @@ struct AdminHomeView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 Picker("Queue", selection: $model.tab) {
-                    ForEach(AppModel.QueueTab.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(AppModel.QueueTab.allCases) { tab in
+                        let unread = model.unreadCounts[tab.backendStatus] ?? 0
+                        Text(tab.rawValue + (unread > 0 ? " · \(unread)" : "")).tag(tab)
+                    }
                 }.pickerStyle(.segmented).padding()
                 ZStack {
                     List(model.requests, selection: $model.selectedID) { request in
@@ -285,7 +299,16 @@ struct AdminHomeView: View {
             if model.selectedID != nil { RequestDetailView(model: model) }
             else { ContentUnavailableView("選擇一題", systemImage: "text.bubble", description: Text("從左側待處理清單選擇學生送來的題目。")) }
         }
-        .task { await model.reloadQueue() }
+        .task {
+            await model.reloadQueue()
+            while !Task.isCancelled, model.auth.state == .operatorReady {
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled, model.auth.state == .operatorReady else { return }
+                await model.reloadQueue()
+                if model.selectedID != nil { await model.reloadDetail() }
+            }
+        }
+        .onChange(of: model.auth.state) { _, state in if state != .operatorReady { model.invalidateAccount() } }
         .sheet(isPresented: $showSettings) { OperatorSettingsView(model: model) }
         .onChange(of: model.tab) { _, _ in Task { await model.changeTab() } }
         .alert("錯誤", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("好", role: .cancel) {} } message: { Text(model.errorMessage ?? "") }
@@ -379,7 +402,9 @@ struct RequestRow: View {
     let request: SolverRequest
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack { Text(request.subject.isEmpty ? "未分類" : request.subject).font(.caption.bold()); Spacer(); statusBadge }
+            HStack {
+                if request.hasUnreadStudentMessage { Label("學生新訊息", systemImage: "circle.fill").font(.caption).foregroundStyle(.blue) }
+                Text(request.subject.isEmpty ? "未分類" : request.subject).font(.caption.bold()); Spacer(); statusBadge }
             Text(request.stem).lineLimit(3).font(.body)
             HStack(spacing: 12) {
                 if !request.optionLines.isEmpty { Label("\(request.optionLines.count) 選項", systemImage: "list.bullet") }
@@ -502,8 +527,8 @@ struct RequestDetailView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if detail.request.status != "closed" {
                         ReplyComposer { text, images in
-                            await model.sendReply(text: text, images: images)
-                        }
+                            await model.sendReply(requestID: detail.request.id, text: text, images: images)
+                        }.id(detail.request.id)
                     } else {
                         Text("此對話已關閉")
                             .font(.subheadline)
@@ -791,6 +816,7 @@ struct ReplyComposer: View {
                 .disabled(sending || images.count >= 10)
 
                 TextField("傳送訊息…", text: $text, axis: .vertical)
+                    .disabled(sending)
                     .lineLimit(1...4)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 13)

@@ -15,6 +15,7 @@ final class AuthStore: ObservableObject {
     private(set) var operatorSession: OperatorSession?
     private var oauthCoordinator: OAuthCoordinator?
     private var operationGeneration = 0
+    @Published private(set) var sessionGeneration = UUID()
 
     private let authAccount = "supabase-auth-session"
     private let operatorAccount = "operator-session"
@@ -30,6 +31,15 @@ final class AuthStore: ObservableObject {
         else { state = .signedOut }
     }
 
+    var accountID: String? {
+        guard let payload = authSession?.accessToken.split(separator: ".").dropFirst().first else { return nil }
+        var base64 = String(payload).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json["sub"] as? String
+    }
+
     func signInPassword() async {
         let e = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !e.isEmpty, !password.isEmpty else { state = .error("請輸入 Email 和密碼。") ; return }
@@ -39,6 +49,7 @@ final class AuthStore: ObservableObject {
             let data = try await requestAuth(path: "/auth/v1/token?grant_type=password", body: payload)
             let response = try JSONDecoder().decode(AuthTokenResponse.self, from: data)
             guard operation == operationGeneration else { return }
+            sessionGeneration = UUID()
             try saveAuth(response.session)
             password = ""
             state = .signedIn
@@ -68,6 +79,7 @@ final class AuthStore: ObservableObject {
             guard let access = params["access_token"], !access.isEmpty else { throw AppError.message("Google 登入完成，但沒有收到 Supabase session。請確認 Supabase Redirect URLs 已加入 wrongbooksolver://auth/callback。") }
             let expiresIn = TimeInterval(Int(params["expires_in"] ?? "") ?? 3600)
             let session = AuthSession(accessToken: access, refreshToken: params["refresh_token"] ?? "", expiresAt: Date().addingTimeInterval(expiresIn), tokenType: params["token_type"] ?? "bearer")
+            sessionGeneration = UUID()
             try saveAuth(session)
             state = .signedIn
         } catch {
@@ -113,12 +125,14 @@ final class AuthStore: ObservableObject {
     }
 
     func validAccessToken() async throws -> String {
+        let generation = sessionGeneration
         guard var session = authSession else { throw AppError.message("請先登入。") }
         if session.expiresAt.timeIntervalSinceNow > 60 { return session.accessToken }
         guard !session.refreshToken.isEmpty else { signOut(); throw AppError.message("登入已過期，請重新登入。") }
         do {
             let data = try await requestAuth(path: "/auth/v1/token?grant_type=refresh_token", body: ["refresh_token": session.refreshToken])
             let response = try JSONDecoder().decode(AuthTokenResponse.self, from: data)
+            guard generation == sessionGeneration else { throw CancellationError() }
             session = response.session
             if session.refreshToken.isEmpty { session.refreshToken = authSession?.refreshToken ?? "" }
             try saveAuth(session)
@@ -127,6 +141,7 @@ final class AuthStore: ObservableObject {
             // A temporary DNS/offline/connection failure must not erase a valid stored login.
             // V174 signed the operator out for every refresh error, which amplified transient
             // network failures and made launch recovery much harder.
+            guard generation == sessionGeneration else { throw CancellationError() }
             if AppError.isTransientNetwork(error) { throw error }
             signOut()
             throw AppError.message("登入已失效，請重新登入。")
@@ -144,6 +159,7 @@ final class AuthStore: ObservableObject {
     }
 
     func signOut() {
+        operationGeneration += 1; sessionGeneration = UUID()
         authSession = nil; operatorSession = nil; password = ""; operatorKey = ""
         try? KeychainStore.set(nil, account: authAccount)
         try? KeychainStore.set(nil, account: operatorAccount)
@@ -151,6 +167,7 @@ final class AuthStore: ObservableObject {
     }
 
     func lockOperator() {
+        operationGeneration += 1; sessionGeneration = UUID()
         operatorSession = nil
         try? KeychainStore.set(nil, account: operatorAccount)
         state = authSession == nil ? .signedOut : .signedIn
