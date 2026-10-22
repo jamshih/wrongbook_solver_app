@@ -176,8 +176,19 @@ final class AppModel: ObservableObject {
         guard let selectedID else { return false }
         do {
             _ = try await api.reply(requestID: selectedID, text: text, images: images)
-            await reloadDetail()
+            // A successful reply moves a queued/claimed request to the answered queue.
+            // Reloading the previous queue would otherwise clear the selected thread.
+            // Keep the conversation open so operators can send additional messages.
+            tab = .answered
+            self.selectedID = selectedID
+            queueGeneration += 1
+            queueTask?.cancel()
+            requests = []
+            hasLoadedQueue = false
+            queueErrorMessage = nil
             await reloadQueue()
+            self.selectedID = selectedID
+            await reloadDetail()
             return true
         } catch {
             errorMessage = AppError.userFacingMessage(for: error)

@@ -396,34 +396,144 @@ struct RequestRow: View {
 struct RequestDetailView: View {
     @ObservedObject var model: AppModel
     @State private var showSettings = false
+    @State private var questionExpanded = true
 
     var body: some View {
         Group {
             if let detail = model.detail {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        HeaderBlock(request: detail.request)
-                        if let shared = detail.request.sharedPassage {
-                            GroupBox("題組文章 / 共用題幹") { Text(shared).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("學生的解題對話")
+                                .font(.headline)
+                            Text(detail.request.subject.isEmpty ? "真人解題" : detail.request.subject)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        if !detail.request.optionLines.isEmpty {
-                            GroupBox("選項") { VStack(alignment: .leading, spacing: 10) { ForEach(detail.request.optionLines, id: \.self) { Text($0).textSelection(.enabled) } }.frame(maxWidth: .infinity, alignment: .leading) }
+                        Spacer()
+                        Text(detail.request.status == "closed" ? "已關閉" :
+                             detail.request.status == "answered" ? "已回覆" :
+                             detail.request.status == "claimed" ? "處理中" : "待處理")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    Divider()
+
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 20) {
+                                DisclosureGroup(isExpanded: $questionExpanded) {
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        HeaderBlock(request: detail.request)
+                                        if let shared = detail.request.sharedPassage {
+                                            GroupBox("題組文章 / 共用題幹") {
+                                                Text(shared).frame(maxWidth: .infinity, alignment: .leading)
+                                                    .textSelection(.enabled)
+                                            }
+                                        }
+                                        if !detail.request.optionLines.isEmpty {
+                                            GroupBox("選項") {
+                                                VStack(alignment: .leading, spacing: 10) {
+                                                    ForEach(detail.request.optionLines, id: \.self) {
+                                                        Text($0).textSelection(.enabled)
+                                                    }
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                        }
+                                        FigureGallery(figures: detail.request.displayMedia)
+                                    }
+                                    .padding(.top, 12)
+                                } label: {
+                                    Label("查看題目、原始裁切圖與圖表", systemImage: "doc.text.image")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .padding(14)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                            in: RoundedRectangle(cornerRadius: 16))
+
+                                HStack {
+                                    Spacer()
+                                    Text("真人解題對話")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+
+                                if detail.messages.isEmpty {
+                                    HStack {
+                                        Spacer()
+                                        Text("學生已送出題目。你可以傳送文字、照片，或兩者一起回覆。")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.center)
+                                            .padding(18)
+                                        Spacer()
+                                    }
+                                } else {
+                                    MessageHistory(messages: detail.messages)
+                                }
+                                Color.clear.frame(height: 1).id("last-message")
+                            }
+                            .padding(20)
+                            .frame(maxWidth: 900)
+                            .frame(maxWidth: .infinity)
                         }
-                        FigureGallery(figures: detail.request.displayMedia)
-                        if !detail.messages.isEmpty { MessageHistory(messages: detail.messages) }
-                        if detail.request.status != "answered" && detail.request.status != "closed" {
-                            ReplyComposer { text, images in
-                                await model.sendReply(text: text, images: images)
+                        .scrollDismissesKeyboard(.interactively)
+                        .onChange(of: detail.messages.count) { _, _ in
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("last-message", anchor: .bottom)
                             }
                         }
-                    }.padding(20)
+                        .task(id: detail.request.id) {
+                            // Unanswered conversations show the full question first.
+                            // Existing conversations open at their most recent message.
+                            if !detail.messages.isEmpty {
+                                proxy.scrollTo("last-message", anchor: .bottom)
+                            }
+                        }
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .navigationTitle(detail.request.subject.isEmpty ? "真人解題" : detail.request.subject)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if detail.request.status != "closed" {
+                        ReplyComposer { text, images in
+                            await model.sendReply(text: text, images: images)
+                        }
+                    } else {
+                        Text("此對話已關閉")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(14)
+                            .background(.regularMaterial)
+                    }
+                }
+                .navigationTitle("真人解題")
+                .onChange(of: detail.request.id) { _, _ in
+                    questionExpanded = true
+                }
                 .toolbar {
-                    if detail.request.status == "queued" { ToolbarItem(placement: .topBarTrailing) { Button("開始處理") { Task { await model.claimSelected() } }.buttonStyle(.borderedProminent) } }
-                    ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.reloadDetail() } } label: { Image(systemName: "arrow.clockwise") } }
-                    ToolbarItem(placement: .topBarTrailing) { Button { showSettings = true } label: { Image(systemName: "gearshape") } }
+                    if detail.request.status == "queued" {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("開始處理") { Task { await model.claimSelected() } }
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { Task { await model.reloadDetail() } } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gearshape")
+                        }
+                    }
                 }
                 .sheet(isPresented: $showSettings) { OperatorSettingsView(model: model) }
             } else {
@@ -441,7 +551,6 @@ struct RequestDetailView: View {
             }
         }
     }
-
 }
 
 struct HeaderBlock: View {
@@ -537,23 +646,73 @@ private struct SolverMediaStrip: View {
 
 struct MessageHistory: View {
     let messages: [SolverMessage]
+
     var body: some View {
-        GroupBox("真人回覆紀錄") {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(messages) { message in
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(message.authorKind == "operator" ? "我" : message.authorKind).font(.caption.bold()).foregroundStyle(.secondary)
-                        if let body = message.body, !body.isEmpty { Text(body).textSelection(.enabled) }
-                        ForEach(message.attachments ?? []) { attachment in
-                            if let raw = attachment.signedURL, let url = URL(string: raw) {
-                                SolverRemoteImage(url: url)
-                                    .frame(maxHeight: 260)
+        LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(messages) { message in
+                SolverMessageBubble(message: message)
+            }
+        }
+    }
+}
+
+private struct SolverMessageBubble: View {
+    let message: SolverMessage
+    private var fromOperator: Bool { message.authorKind == "operator" }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            if fromOperator { Spacer(minLength: 48) }
+            else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: fromOperator ? .trailing : .leading, spacing: 6) {
+                if let body = message.body, !body.isEmpty {
+                    Text(body)
+                        .foregroundStyle(fromOperator ? Color.white : Color.primary)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 11)
+                        .background {
+                            if fromOperator {
+                                RoundedRectangle(cornerRadius: 19)
+                                    .fill(LinearGradient(
+                                        colors: [Color(red: 0.33, green: 0.37, blue: 0.92),
+                                                 Color(red: 0.55, green: 0.34, blue: 0.86)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ))
+                            } else {
+                                RoundedRectangle(cornerRadius: 19)
+                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
                             }
                         }
-                    }.padding(12).background(.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
+                ForEach((message.attachments ?? []).sorted { $0.displayOrder < $1.displayOrder }) { attachment in
+                    if let raw = attachment.signedURL,
+                       let url = URL(string: raw),
+                       url.scheme?.lowercased() == "https" {
+                        SolverRemoteImage(url: url)
+                            .frame(maxWidth: 280, maxHeight: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 15))
+                    } else {
+                        Label("圖片無法載入，請重新整理", systemImage: "photo.badge.exclamationmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let date = message.createdAt {
+                    Text(date, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: 440, alignment: fromOperator ? .trailing : .leading)
+            if !fromOperator { Spacer(minLength: 48) }
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -570,78 +729,114 @@ struct ReplyComposer: View {
     let send: (String, [PendingImage]) async -> Bool
 
     var body: some View {
-        GroupBox("回覆學生") {
-            VStack(alignment: .leading, spacing: 12) {
-                TextEditor(text: $text)
-                    .frame(minHeight: 140)
-                    .padding(6)
-                    .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                    .scrollDismissesKeyboard(.interactively)
-
-                if !images.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack {
-                            ForEach(images) { item in
-                                ZStack(alignment: .topTrailing) {
-                                    PendingImageThumbnail(item: item)
-                                        .frame(width: 96, height: 96)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    Button {
-                                        images.removeAll { $0.id == item.id }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(.white, .black.opacity(0.7))
-                                    }
-                                    .offset(x: 6, y: -6)
+        VStack(alignment: .leading, spacing: 10) {
+            if !images.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 9) {
+                        ForEach(images) { item in
+                            ZStack(alignment: .topTrailing) {
+                                PendingImageThumbnail(item: item)
+                                    .frame(width: 76, height: 76)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                Button {
+                                    images.removeAll { $0.id == item.id }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .black.opacity(0.75))
                                 }
+                                .accessibilityLabel("移除圖片")
+                                .disabled(sending)
+                                .offset(x: 5, y: -5)
                             }
                         }
                     }
-                }
-
-                HStack {
-                    PhotosPicker(
-                        selection: $pickerItems,
-                        maxSelectionCount: max(0, 10 - images.count),
-                        matching: .images
-                    ) {
-                        Label("相簿", systemImage: "photo.on.rectangle")
-                    }
-                    Button { showCamera = true } label: { Label("拍照", systemImage: "camera") }
-                    Button {
-                        guard images.count < 10, let image = UIPasteboard.general.image else { return }
-                        Task { @MainActor in
-                            if let pending = await SolverImageProcessor.prepare(
-                                image: image,
-                                filename: "paste_\(UUID().uuidString).jpg"
-                            ) {
-                                images.append(pending)
-                            }
-                        }
-                    } label: { Label("貼上圖片", systemImage: "doc.on.clipboard") }
-                    Spacer()
-                    Button {
-                        Task { await submit() }
-                    } label: {
-                        if sending { ProgressView() }
-                        else { Label("送出回覆", systemImage: "paperplane.fill") }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        sending ||
-                        (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty)
-                    )
+                    .padding(.horizontal, 3)
+                    .padding(.top, 4)
                 }
             }
+
+            HStack(alignment: .bottom, spacing: 9) {
+                Menu {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label("拍照", systemImage: "camera")
+                    }
+                    Button {
+                        pasteImage()
+                    } label: {
+                        Label("貼上圖片", systemImage: "doc.on.clipboard")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 38)
+                }
+                .accessibilityLabel("更多圖片選項")
+                .disabled(sending || images.count >= 10)
+
+                PhotosPicker(
+                    selection: $pickerItems,
+                    maxSelectionCount: max(1, 10 - images.count),
+                    matching: .images
+                ) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 38)
+                }
+                .accessibilityLabel("從相簿選擇圖片")
+                .disabled(sending || images.count >= 10)
+
+                TextField("傳送訊息…", text: $text, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 10)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 21))
+                    .submitLabel(.send)
+
+                Button {
+                    Task { await submit() }
+                } label: {
+                    Group {
+                        if sending {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        (sending || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty))
+                            ? Color.gray : Color(red: 0.37, green: 0.39, blue: 0.94),
+                        in: Circle()
+                    )
+                }
+                .accessibilityLabel("傳送訊息")
+                .disabled(
+                    sending ||
+                    (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty)
+                )
+            }
         }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
         .sheet(isPresented: $showCamera) {
             CameraPicker { image in
                 Task { @MainActor in
+                    guard images.count < 10 else { return }
                     if let pending = await SolverImageProcessor.prepare(
-                        image: image,
-                        filename: "camera_\(UUID().uuidString).jpg"
-                    ) {
+                        image: image, filename: "camera_\(UUID().uuidString).jpg"
+                    ), images.count < 10 {
                         images.append(pending)
                     }
                 }
@@ -649,6 +844,18 @@ struct ReplyComposer: View {
         }
         .onChange(of: pickerItems) { _, items in
             Task { await load(items) }
+        }
+    }
+
+    private func pasteImage() {
+        guard images.count < 10, !sending,
+              let image = UIPasteboard.general.image else { return }
+        Task { @MainActor in
+            if let pending = await SolverImageProcessor.prepare(
+                image: image, filename: "paste_\(UUID().uuidString).jpg"
+            ), images.count < 10 {
+                images.append(pending)
+            }
         }
     }
 
