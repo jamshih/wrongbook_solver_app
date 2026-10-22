@@ -383,7 +383,7 @@ struct RequestRow: View {
             Text(request.stem).lineLimit(3).font(.body)
             HStack(spacing: 12) {
                 if !request.optionLines.isEmpty { Label("\(request.optionLines.count) 選項", systemImage: "list.bullet") }
-                if !(request.figureRefs ?? []).isEmpty { Label("\(request.figureRefs?.count ?? 0) 圖", systemImage: "photo") }
+                if !request.displayMedia.isEmpty { Label("\(request.displayMedia.count) 圖", systemImage: "photo") }
             }.font(.caption).foregroundStyle(.secondary)
         }.padding(.vertical, 6)
     }
@@ -409,7 +409,7 @@ struct RequestDetailView: View {
                         if !detail.request.optionLines.isEmpty {
                             GroupBox("選項") { VStack(alignment: .leading, spacing: 10) { ForEach(detail.request.optionLines, id: \.self) { Text($0).textSelection(.enabled) } }.frame(maxWidth: .infinity, alignment: .leading) }
                         }
-                        FigureGallery(figures: detail.request.figureRefs ?? [])
+                        FigureGallery(figures: detail.request.displayMedia)
                         if !detail.messages.isEmpty { MessageHistory(messages: detail.messages) }
                         if detail.request.status != "answered" && detail.request.status != "closed" {
                             ReplyComposer { text, images in
@@ -456,20 +456,79 @@ struct HeaderBlock: View {
 
 struct FigureGallery: View {
     let figures: [SolverFigure]
+
+    private var orderedMedia: [SolverFigure] {
+        // The backend orders media explicitly; older payloads keep their array order.
+        figures.enumerated()
+            .sorted { lhs, rhs in
+                let leftOrder = lhs.element.displayOrder ?? lhs.offset
+                let rightOrder = rhs.element.displayOrder ?? rhs.offset
+                return leftOrder == rightOrder ? lhs.offset < rhs.offset : leftOrder < rightOrder
+            }
+            .map(\.element)
+    }
+
+    private var originalCrops: [SolverFigure] { orderedMedia.filter(\.isOriginalCrop) }
+    private var extractedFigures: [SolverFigure] { orderedMedia.filter(\.isExtractedFigure) }
+    private var legacyMedia: [SolverFigure] {
+        orderedMedia.filter { !$0.isOriginalCrop && !$0.isExtractedFigure }
+    }
+
     var body: some View {
-        if !figures.isEmpty {
-            GroupBox("題目圖片 / 圖表") {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 14) {
-                        ForEach(figures) { figure in
-                            if let raw = figure.signedURL, let url = URL(string: raw) {
+        VStack(alignment: .leading, spacing: 14) {
+            if !originalCrops.isEmpty {
+                SolverMediaStrip(title: "學生選取的原始題目裁切圖", figures: originalCrops)
+            } else {
+                Label(
+                    "尚未收到獨立的原始裁切圖；舊格式圖片可能包含整頁，請勿視為學生選取的範圍。",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !extractedFigures.isEmpty {
+                SolverMediaStrip(title: "擷取的圖形 / 圖表", figures: extractedFigures)
+            }
+            if !legacyMedia.isEmpty {
+                SolverMediaStrip(title: "其他來源圖片（舊格式）", figures: legacyMedia)
+            }
+        }
+    }
+}
+
+private struct SolverMediaStrip: View {
+    let title: String
+    let figures: [SolverFigure]
+
+    var body: some View {
+        GroupBox(title) {
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(Array(figures.enumerated()), id: \.offset) { index, figure in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(figure.label?.isEmpty == false ? figure.label! : "圖片 \(index + 1)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                            if let raw = figure.signedURL,
+                               let url = URL(string: raw),
+                               url.scheme?.lowercased() == "https" {
                                 SolverRemoteImage(url: url)
                                     .frame(width: 300, height: 260)
                                     .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                            } else {
+                                ContentUnavailableView(
+                                    "圖片目前無法載入",
+                                    systemImage: "photo.badge.exclamationmark",
+                                    description: Text("請重新整理題目，以取得有效的圖片連結。")
+                                )
+                                .frame(width: 300, height: 260)
                             }
                         }
-                    }.padding(.vertical, 4)
+                    }
                 }
+                .padding(.vertical, 4)
             }
         }
     }
