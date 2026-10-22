@@ -92,6 +92,8 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
     var choiceLabels: JSONValue?
     var sourceMetadata: JSONValue?
     var figureRefs: [SolverFigure]?
+    /// New snapshot media is optional until the backend rollout; legacy requests still use figure_refs.
+    var questionMedia: [SolverFigure]?
     var createdAt: Date?
     var claimedAt: Date?
     var answeredAt: Date?
@@ -101,6 +103,7 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
         case choiceLabels = "choice_labels"
         case sourceMetadata = "source_metadata"
         case figureRefs = "figure_refs"
+        case questionMedia = "question_media"
         case createdAt = "created_at"
         case claimedAt = "claimed_at"
         case answeredAt = "answered_at"
@@ -122,6 +125,13 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
         }
     }
 
+    var displayMedia: [SolverFigure] {
+        // Avoid rendering a newly supplied crop twice when figure_refs is also present
+        // for backwards compatibility.
+        if let questionMedia, !questionMedia.isEmpty { return questionMedia }
+        return figureRefs ?? []
+    }
+
     var sharedPassage: String? {
         guard case .object(let metadata)? = sourceMetadata,
               let value = metadata["shared_passage"]?.stringValue,
@@ -131,15 +141,28 @@ struct SolverRequest: Identifiable, Decodable, Hashable {
 }
 
 struct SolverFigure: Decodable, Hashable, Identifiable {
-    var id: String { path ?? signedURL ?? UUID().uuidString }
+    // Media identity must not change on every SwiftUI render.
+    var id: String { "\(bucket ?? "")|\(path ?? "")|\(signedURL ?? "")|\(displayOrder ?? 0)|\(label ?? "")" }
     let bucket: String?
     let path: String?
     let signedURL: String?
     let label: String?
+    /// Optional on legacy figure_refs; the backend will populate it for new media.
+    let kind: String?
+    let displayOrder: Int?
 
     enum CodingKeys: String, CodingKey {
-        case bucket, path, label
+        case bucket, path, label, kind
         case signedURL
+        case displayOrder = "display_order"
+    }
+
+    var isOriginalCrop: Bool {
+        kind == "original_selected_crop" || kind == "stem_crop"
+    }
+
+    var isExtractedFigure: Bool {
+        kind == "extracted_figure" || kind == "diagram" || kind == "chart"
     }
 }
 
