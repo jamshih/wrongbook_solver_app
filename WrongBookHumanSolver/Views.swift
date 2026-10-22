@@ -396,7 +396,7 @@ struct RequestRow: View {
 struct RequestDetailView: View {
     @ObservedObject var model: AppModel
     @State private var showSettings = false
-    @State private var questionExpanded = false
+    @State private var questionExpanded = true
 
     var body: some View {
         Group {
@@ -491,7 +491,11 @@ struct RequestDetailView: View {
                             }
                         }
                         .task(id: detail.request.id) {
-                            proxy.scrollTo("last-message", anchor: .bottom)
+                            // Unanswered conversations show the full question first.
+                            // Existing conversations open at their most recent message.
+                            if !detail.messages.isEmpty {
+                                proxy.scrollTo("last-message", anchor: .bottom)
+                            }
                         }
                     }
                 }
@@ -510,6 +514,9 @@ struct RequestDetailView: View {
                     }
                 }
                 .navigationTitle("真人解題")
+                .onChange(of: detail.request.id) { _, _ in
+                    questionExpanded = true
+                }
                 .toolbar {
                     if detail.request.status == "queued" {
                         ToolbarItem(placement: .topBarTrailing) {
